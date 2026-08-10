@@ -1,4 +1,4 @@
-require("dotenv").config();const http = require("http");
+const http = require("http");
 http.createServer((req, res) => res.end("Cadence bot is running")).listen(process.env.PORT || 3000);
 const { Telegraf, Markup } = require("telegraf");
 const { createClient } = require("@supabase/supabase-js");
@@ -10,9 +10,9 @@ const WEB_APP_URL = process.env.WEB_APP_URL;
 const onboardingState = new Map();
 
 const DEFAULT_PILLARS = [
-  { key: "growth", label: "🚀 Рост" },
-  { key: "behind", label: "🎬 Закулисье" },
-  { key: "tips", label: "💡 Советы" },
+  { key: "growth", label: "Рост" },
+  { key: "behind", label: "Закулисье" },
+  { key: "tips", label: "Советы" },
 ];
 
 async function getOrCreateUser(ctx) {
@@ -48,13 +48,13 @@ bot.start(async (ctx) => {
   const user = await getOrCreateUser(ctx);
   if (user.onboarding_done) {
     return ctx.reply(
-      `С возвращением, ${ctx.from.first_name}! 👋\n\nОткрывайте план в любое время кнопкой ниже.`,
-      Markup.inlineKeyboard([Markup.button.webApp("📋 Открыть планировщик", WEB_APP_URL)])
+      "С возвращением! Открывайте план кнопкой ниже.",
+      Markup.inlineKeyboard([Markup.button.webApp("Открыть планировщик", WEB_APP_URL)])
     );
   }
   onboardingState.set(ctx.from.id, { step: "ask_niche" });
   await ctx.reply(
-    `Привет, ${ctx.from.first_name}! 👋\n\nЯ Cadence — помогу планировать контент и не терять ритм публикаций.\n\nДавай настроим всё под тебя. В какой нише ты работаешь?`
+    "Привет! Я Cadence. Помогаю планировать контент и не терять ритм публикаций. В какой нише ты работаешь?"
   );
 });
 
@@ -65,16 +65,16 @@ bot.on("text", async (ctx) => {
     const niche = ctx.message.text.trim();
     await saveNiche(ctx.from.id, niche);
     onboardingState.set(ctx.from.id, { step: "choose_pillars", selected: [] });
-    return ctx.reply(`Отлично! Теперь выбери контент-пиллары:`, pillarsKeyboard([]));
+    return ctx.reply("Отлично! Теперь выбери контент-пиллары:", pillarsKeyboard([]));
   }
 });
 
 function pillarsKeyboard(selected) {
   const buttons = DEFAULT_PILLARS.map((p) => {
-    const mark = selected.includes(p.key) ? "✅ " : "";
-    return Markup.button.callback(`${mark}${p.label}`, `pillar_${p.key}`);
+    const mark = selected.includes(p.key) ? "OK " : "";
+    return Markup.button.callback(mark + p.label, "pillar_" + p.key);
   });
-  buttons.push(Markup.button.callback("Готово ✔️", "pillars_done"));
+  buttons.push(Markup.button.callback("Готово", "pillars_done"));
   return Markup.inlineKeyboard(buttons, { columns: 1 });
 }
 
@@ -95,23 +95,31 @@ bot.action(/pillar_(.+)/, async (ctx) => {
 bot.action("pillars_done", async (ctx) => {
   const state = onboardingState.get(ctx.from.id);
   if (!state || state.selected.length === 0) {
-    return ctx.answerCbQuery("Выбери хотя бы один пиллар 🙂", { show_alert: true });
+    return ctx.answerCbQuery("Выбери хотя бы один пиллар", { show_alert: true });
   }
   const pillars = DEFAULT_PILLARS.filter((p) => state.selected.includes(p.key));
   await completeOnboarding(ctx.from.id, pillars);
   onboardingState.delete(ctx.from.id);
   await ctx.answerCbQuery();
-  await ctx.editMessageText("Готово! Твои пиллары сохранены ✨");
+  await ctx.editMessageText("Готово! Твои пиллары сохранены.");
   await ctx.reply(
-    `Всё настроено. Открывай планировщик кнопкой ниже:`,
-    Markup.inlineKeyboard([Markup.button.webApp("📋 Открыть планировщик", WEB_APP_URL)])
+    "Всё настроено. Открывай планировщик кнопкой ниже:",
+    Markup.inlineKeyboard([Markup.button.webApp("Открыть планировщик", WEB_APP_URL)])
   );
+});
+
+bot.command("status", async (ctx) => {
+  const user = await getOrCreateUser(ctx);
+  const statusLabel = user.subscription_status === "trial"
+    ? "пробный период до " + new Date(user.subscription_ends_at).toLocaleDateString("ru-RU")
+    : user.subscription_status;
+  ctx.reply("Статус подписки: " + statusLabel);
 });
 
 bot.command("planner", async (ctx) => {
   const user = await getOrCreateUser(ctx);
   if (!user.onboarding_done) {
-    return ctx.reply("Сначала пройди короткую настройку — отправь /start 🙂");
+    return ctx.reply("Сначала пройди короткую настройку — отправь /start");
   }
   return ctx.reply(
     "Открывай планировщик:",
@@ -123,8 +131,8 @@ bot.command("help", async (ctx) => {
   ctx.reply("Вот что я умею: /start, /planner, /status");
 });
 
-
 bot.launch();
-console.log("Cadence bot запущен ✔️");
+console.log("Cadence bot zapushen");
+
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
