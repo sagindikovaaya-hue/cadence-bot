@@ -1,5 +1,4 @@
-const http = require("http");
-http.createServer((req, res) => res.end("Cadence bot is running")).listen(process.env.PORT || 3000);
+require("dotenv").config();
 const { Telegraf, Markup } = require("telegraf");
 const { createClient } = require("@supabase/supabase-js");
 
@@ -42,6 +41,29 @@ async function saveNiche(telegramId, niche) {
 
 async function completeOnboarding(telegramId, pillars) {
   await supabase.from("users").update({ pillars, onboarding_done: true }).eq("telegram_id", telegramId);
+}
+
+async function generateIdeas(niche, pillarLabel) {
+  const prompt = "Ты эксперт по контент-стратегии для ниши: " + niche + ". Придумай ровно 5 идей постов для контент-пиллара " + pillarLabel + ". Формат ответа ТОЛЬКО валидный JSON без markdown: массив объектов с полями title и hook.";
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: 1000,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  const data = await response.json();
+  const rawText = data.content.filter(function(b) { return b.type === "text"; }).map(function(b) { return b.text; }).join("");
+  const cleaned = rawText.replace(/```json|```/g, "").trim();
+  return JSON.parse(cleaned);
 }
 
 bot.start(async (ctx) => {
@@ -128,31 +150,8 @@ bot.command("planner", async (ctx) => {
 });
 
 bot.command("help", async (ctx) => {
-  ctx.reply("Вот что я умею: /start, /planner, /status");
+  ctx.reply("Вот что я умею: /start, /planner, /status, /ideas");
 });
-
-async function generateIdeas(niche, pillarLabel) {
-  const prompt = "Ты эксперт по контент-стратегии для ниши: " + niche + ". Придумай ровно 5 идей постов для контент-пиллара \"" + pillarLabel + "\". Формат ответа ТОЛЬКО валидный JSON без markdown: [{\"title\":\"...\",\"hook\":\"...\"}]. Идеи должны быть конкретными и разными по формату.";
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-5",
-      max_tokens: 1000,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-
-  const data = await response.json();
-  const rawText = data.content.filter((b) => b.type === "text").map((b) => b.text).join("");
-  const cleaned = rawText.replace(/```json|```/g, "").trim();
-  return JSON.parse(cleaned);
-}
 
 bot.command("ideas", async (ctx) => {
   const user = await getOrCreateUser(ctx);
@@ -163,7 +162,6 @@ bot.command("ideas", async (ctx) => {
   const pillar = user.pillars[0];
   try {
     const ideas = await generateIdeas(user.niche, pillar.label);
-    const today = new Date().toISOString().slice(0, 10);
     const monday = new Date();
     monday.setDate(monday.getDate() - monday.getDay() + 1);
     const weekOf = monday.toISOString().slice(0, 10);
@@ -178,8 +176,8 @@ bot.command("ideas", async (ctx) => {
       });
     }
 
-    let text = "Вот идеи для пиллара \"" + pillar.label + "\":\n\n";
-    ideas.forEach((idea, i) => {
+    let text = "Вот идеи для пиллара " + pillar.label + ":\n\n";
+    ideas.forEach(function(idea, i) {
       text += (i + 1) + ". " + idea.title + "\n" + idea.hook + "\n\n";
     });
     ctx.reply(text);
@@ -189,9 +187,10 @@ bot.command("ideas", async (ctx) => {
   }
 });
 
+bot.catch((err) => console.error("Ошибка бота:", err));
 
-
-bot.launch();console.log("Cadence bot zapushen");
+bot.launch();
+console.log("Cadence bot zapushen");
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
