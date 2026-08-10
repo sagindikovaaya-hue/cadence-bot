@@ -131,7 +131,9 @@ bot.command("help", async (ctx) => {
   ctx.reply("Вот что я умею: /start, /planner, /status");
 });
 
-bot.launch();
+bot.launch();bot.catch((err) => console.error("Ошибка бота:", err));
+
+
 console.log("Cadence bot zapushen");
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
