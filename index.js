@@ -131,7 +131,64 @@ bot.command("help", async (ctx) => {
   ctx.reply("Вот что я умею: /start, /planner, /status");
 });
 
-bot.launch();bot.catch((err) => console.error("Ошибка бота:", err));
+bot.launch();async function generateIdeas(niche, pillarLabel) {
+  const prompt = "Ты эксперт по контент-стратегии для ниши: " + niche + ". Придумай ровно 5 идей постов для контент-пиллара \"" + pillarLabel + "\". Формат ответа ТОЛЬКО валидный JSON без markdown: [{\"title\":\"...\",\"hook\":\"...\"}]. Идеи должны быть конкретными и разными по формату.";
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: 1000,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  const data = await response.json();
+  const rawText = data.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+  const cleaned = rawText.replace(/```json|```/g, "").trim();
+  return JSON.parse(cleaned);
+}
+
+bot.command("ideas", async (ctx) => {
+  const user = await getOrCreateUser(ctx);
+  if (!user.onboarding_done || !user.pillars || user.pillars.length === 0) {
+    return ctx.reply("Сначала пройди настройку — отправь /start");
+  }
+  await ctx.reply("Придумываю идеи, секунду...");
+  const pillar = user.pillars[0];
+  try {
+    const ideas = await generateIdeas(user.niche, pillar.label);
+    const today = new Date().toISOString().slice(0, 10);
+    const monday = new Date();
+    monday.setDate(monday.getDate() - monday.getDay() + 1);
+    const weekOf = monday.toISOString().slice(0, 10);
+
+    for (const idea of ideas) {
+      await supabase.from("weekly_ideas").insert({
+        user_id: user.id,
+        title: idea.title,
+        hook: idea.hook,
+        pillar_key: pillar.key,
+        week_of: weekOf,
+      });
+    }
+
+    let text = "Вот идеи для пиллара \"" + pillar.label + "\":\n\n";
+    ideas.forEach((idea, i) => {
+      text += (i + 1) + ". " + idea.title + "\n" + idea.hook + "\n\n";
+    });
+    ctx.reply(text);
+  } catch (err) {
+    console.error("Ошибка генерации идей:", err);
+    ctx.reply("Не получилось придумать идеи, попробуй ещё раз чуть позже.");
+  }
+});
+
 
 
 console.log("Cadence bot zapushen");
