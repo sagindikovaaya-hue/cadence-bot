@@ -108,12 +108,21 @@ bot.action("pillars_done", async (ctx) => {
   );
 });
 
-bot.command("status", async (ctx) => {
+bot.command("planner", async (ctx) => {
   const user = await getOrCreateUser(ctx);
-  const statusLabel = user.subscription_status === "trial"
-    ? `пробный период до ${new Date(user.subscription_ends_at).toLocaleDateString("ru-RU")}`
-    : user.subscription_status;
-  ctx.reply(`Статус подписки: ${statusLabel}`);
+  if (!user.onboarding_done) {
+    return ctx.reply("Сначала пройди короткую настройку — отправь /start 🙂");
+  }
+  return ctx.reply(
+    "Открывай планировщик:",
+    Markup.inlineKeyboard([Markup.button.webApp("📋 Открыть планировщик", WEB_APP_URL)])
+  
+bot.command("help", async (ctx) => {
+  ctx.reply(
+    `Вот что я умею:\n\n/start — начать заново или открыть меню\n/planner — открыть планировщик контента\n/status — проверить статус подписки\n\nКаждую неделю я буду присылать тебе новые идеи под твою нишу — просто оставайся на связи ✨`
+  );
+});
+
 });
 
 bot.launch();
