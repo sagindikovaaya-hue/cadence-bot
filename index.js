@@ -5,7 +5,7 @@ const { createClient } = require("@supabase/supabase-js");
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
-const WEB_APP_URL = process.env.WEB_APP_URL;
+const WEB_APP_URL = (process.env.WEB_APP_URL || "").trim().replace(/^=+/, "");
 
 const onboardingState = new Map();
 
