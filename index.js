@@ -131,7 +131,7 @@ bot.command("help", async (ctx) => {
   ctx.reply("Вот что я умею: /start, /planner, /status");
 });
 
-bot.launch();async function generateIdeas(niche, pillarLabel) {
+(async function generateIdeas(niche, pillarLabel) {
   const prompt = "Ты эксперт по контент-стратегии для ниши: " + niche + ". Придумай ровно 5 идей постов для контент-пиллара \"" + pillarLabel + "\". Формат ответа ТОЛЬКО валидный JSON без markdown: [{\"title\":\"...\",\"hook\":\"...\"}]. Идеи должны быть конкретными и разными по формату.";
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -191,7 +191,7 @@ bot.command("ideas", async (ctx) => {
 
 
 
-console.log("Cadence bot zapushen");
+bot.launch();console.log("Cadence bot zapushen");
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
