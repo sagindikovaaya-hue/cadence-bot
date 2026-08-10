@@ -1,24 +1,22 @@
+require("dotenv").config();
+
 const http = require("http");
 http.createServer((req, res) => res.end("Cadence bot is running")).listen(process.env.PORT || 3000);
-const { Telegraf, Markup } = require("telegraf");
-const { createClient } = require("@supabase/supabase-js");
+
+const { Telegraf } = require("telegraf");
+const { supabase } = require("./lib/supabase");
+const onboarding = require("./bot/onboarding");
+const { handleToday, touchStreak } = require("./bot/today");
+const { handlePlan, handleReplan } = require("./bot/plan");
+const ideas = require("./bot/ideas");
+const { handleStrategy } = require("./bot/strategy");
+const { handleHomework, handleDone: handleHomeworkDone } = require("./bot/homework");
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
-const WEB_APP_URL = process.env.WEB_APP_URL;
-
-const onboardingState = new Map();
-
-const DEFAULT_PILLARS = [
-  { key: "growth", label: "Рост" },
-  { key: "behind", label: "Закулисье" },
-  { key: "tips", label: "Советы" },
-];
 
 async function getOrCreateUser(ctx) {
   const telegramId = ctx.from.id;
-  const { data: existing } = await supabase
-    .from("users").select("*").eq("telegram_id", telegramId).single();
+  const { data: existing } = await supabase.from("users").select("*").eq("telegram_id", telegramId).single();
   if (existing) return existing;
 
   const { data: created, error } = await supabase
@@ -30,110 +28,66 @@ async function getOrCreateUser(ctx) {
       subscription_status: "trial",
       subscription_ends_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     })
-    .select().single();
+    .select()
+    .single();
 
-  if (error) { console.error("Ошибка создания пользователя:", error); throw error; }
+  if (error) {
+    console.error("Ошибка создания пользователя:", error);
+    throw error;
+  }
   return created;
-}
-
-async function saveNiche(telegramId, niche) {
-  await supabase.from("users").update({ niche }).eq("telegram_id", telegramId);
-}
-
-async function completeOnboarding(telegramId, pillars) {
-  await supabase.from("users").update({ pillars, onboarding_done: true }).eq("telegram_id", telegramId);
 }
 
 bot.start(async (ctx) => {
   const user = await getOrCreateUser(ctx);
   if (user.onboarding_done) {
+    await touchStreak(ctx.from.id);
     return ctx.reply(
-      "С возвращением! Открывайте план кнопкой ниже.",
-      Markup.inlineKeyboard([Markup.button.webApp("Открыть планировщик", WEB_APP_URL)])
+      `С возвращением! 🔥 ${user.streak_current || 0} дней подряд.\n\nЧто дальше:\n/today — план на сегодня\n/plan — план на неделю\n/ideas — идеи для контента\n/strategy — твоя стратегия\n/homework — задание на сегодня`
     );
   }
-  onboardingState.set(ctx.from.id, { step: "ask_niche" });
-  await ctx.reply(
-    "Привет! Я Cadence. Помогаю планировать контент и не терять ритм публикаций. В какой нише ты работаешь?"
-  );
+  await onboarding.start(ctx);
 });
 
 bot.on("text", async (ctx) => {
-  const state = onboardingState.get(ctx.from.id);
-  if (!state) return;
-  if (state.step === "ask_niche") {
-    const niche = ctx.message.text.trim();
-    await saveNiche(ctx.from.id, niche);
-    onboardingState.set(ctx.from.id, { step: "choose_pillars", selected: [] });
-    return ctx.reply("Отлично! Теперь выбери контент-пиллары:", pillarsKeyboard([]));
-  }
+  await onboarding.handleText(ctx);
 });
 
-function pillarsKeyboard(selected) {
-  const buttons = DEFAULT_PILLARS.map((p) => {
-    const mark = selected.includes(p.key) ? "OK " : "";
-    return Markup.button.callback(mark + p.label, "pillar_" + p.key);
-  });
-  buttons.push(Markup.button.callback("Готово", "pillars_done"));
-  return Markup.inlineKeyboard(buttons, { columns: 1 });
-}
-
-bot.action(/pillar_(.+)/, async (ctx) => {
-  const key = ctx.match[1];
-  const state = onboardingState.get(ctx.from.id);
-  if (!state || state.step !== "choose_pillars") return ctx.answerCbQuery();
-  if (state.selected.includes(key)) {
-    state.selected = state.selected.filter((k) => k !== key);
-  } else {
-    state.selected.push(key);
+bot.on("callback_query", async (ctx) => {
+  if (await onboarding.handleAction(ctx)) return;
+  if (await ideas.handleAction(ctx)) return;
+  if (ctx.callbackQuery.data && ctx.callbackQuery.data.startsWith("homework_done_")) {
+    return handleHomeworkDone(ctx);
   }
-  onboardingState.set(ctx.from.id, state);
-  await ctx.editMessageReplyMarkup(pillarsKeyboard(state.selected).reply_markup);
-  await ctx.answerCbQuery();
+  return ctx.answerCbQuery();
 });
 
-bot.action("pillars_done", async (ctx) => {
-  const state = onboardingState.get(ctx.from.id);
-  if (!state || state.selected.length === 0) {
-    return ctx.answerCbQuery("Выбери хотя бы один пиллар", { show_alert: true });
-  }
-  const pillars = DEFAULT_PILLARS.filter((p) => state.selected.includes(p.key));
-  await completeOnboarding(ctx.from.id, pillars);
-  onboardingState.delete(ctx.from.id);
-  await ctx.answerCbQuery();
-  await ctx.editMessageText("Готово! Твои пиллары сохранены.");
-  await ctx.reply(
-    "Всё настроено. Открывай планировщик кнопкой ниже:",
-    Markup.inlineKeyboard([Markup.button.webApp("Открыть планировщик", WEB_APP_URL)])
-  );
-});
+bot.command("today", handleToday);
+bot.command("planner", handleToday);
+bot.command("plan", handlePlan);
+bot.command("replan", handleReplan);
+bot.command("ideas", ideas.start);
+bot.command("strategy", handleStrategy);
+bot.command("homework", handleHomework);
 
 bot.command("status", async (ctx) => {
   const user = await getOrCreateUser(ctx);
-  const statusLabel = user.subscription_status === "trial"
-    ? "пробный период до " + new Date(user.subscription_ends_at).toLocaleDateString("ru-RU")
-    : user.subscription_status;
-  ctx.reply("Статус подписки: " + statusLabel);
-});
-
-bot.command("planner", async (ctx) => {
-  const user = await getOrCreateUser(ctx);
-  if (!user.onboarding_done) {
-    return ctx.reply("Сначала пройди короткую настройку — отправь /start");
-  }
-  return ctx.reply(
-    "Открывай планировщик:",
-    Markup.inlineKeyboard([Markup.button.webApp("Открыть планировщик", WEB_APP_URL)])
-  );
+  const statusLabel =
+    user.subscription_status === "trial"
+      ? "пробный период до " + new Date(user.subscription_ends_at).toLocaleDateString("ru-RU")
+      : user.subscription_status;
+  ctx.reply(`Статус подписки: ${statusLabel}\nStreak: 🔥 ${user.streak_current || 0} дней (лучший: ${user.streak_best || 0})`);
 });
 
 bot.command("help", async (ctx) => {
-  ctx.reply("Вот что я умею: /start, /planner, /status");
+  ctx.reply(
+    "Вот что я умею:\n/start — начать / посмотреть меню\n/today — план на сегодня\n/plan — план на 7 дней\n/replan — пересобрать план\n/ideas — идеи для контента\n/strategy — твоя стратегия\n/homework — задание на сегодня\n/status — статус подписки"
+  );
 });
 
-bot.launch();bot.catch((err) => console.error("Ошибка бота:", err));
+bot.catch((err) => console.error("Ошибка бота:", err));
 
-
+bot.launch();
 console.log("Cadence bot zapushen");
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
