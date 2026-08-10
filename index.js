@@ -115,15 +115,14 @@ bot.command("planner", async (ctx) => {
   }
   return ctx.reply(
     "Открывай планировщик:",
-    Markup.inlineKeyboard([Markup.button.webApp("📋 Открыть планировщик", WEB_APP_URL)])
-  
-bot.command("help", async (ctx) => {
-  ctx.reply(
-    `Вот что я умею:\n\n/start — начать заново или открыть меню\n/planner — открыть планировщик контента\n/status — проверить статус подписки\n\nКаждую неделю я буду присылать тебе новые идеи под твою нишу — просто оставайся на связи ✨`
+    Markup.inlineKeyboard([Markup.button.webApp("Открыть планировщик", WEB_APP_URL)])
   );
 });
 
+bot.command("help", async (ctx) => {
+  ctx.reply("Вот что я умею: /start, /planner, /status");
 });
+
 
 bot.launch();
 console.log("Cadence bot запущен ✔️");
