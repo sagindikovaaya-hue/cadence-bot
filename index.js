@@ -1,4 +1,5 @@
-require("dotenv").config();
+require("dotenv").config();const http = require("http");
+http.createServer((req, res) => res.end("Cadence bot is running")).listen(process.env.PORT || 3000);
 const { Telegraf, Markup } = require("telegraf");
 const { createClient } = require("@supabase/supabase-js");
 
